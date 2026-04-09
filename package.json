@@ -1,0 +1,22 @@
+{
+  "name": "s26-21-ttn-mqtt-client",
+  "version": "1.0.0",
+  "description": "TTN MQTT subscriber for S26-21 Smart Waste Bin project",
+  "main": "ttn_mqtt_client.js",
+  "scripts": {
+    "start": "node ttn_mqtt_client.js"
+  },
+  "keywords": [
+    "mqtt",
+    "ttn",
+    "lorawan",
+    "iot",
+    "waste-management"
+  ],
+  "author": "S26-21 Team",
+  "license": "MIT",
+  "dependencies": {
+    "mqtt": "^5.3.5",
+    "dotenv": "^16.4.1"
+  }
+}

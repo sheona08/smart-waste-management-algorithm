@@ -1,0 +1,146 @@
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+from shapely.geometry import Point
+
+
+BIN_COUNT_PER_ROUTE = 40  # number of bins to sample inside each route polygon
+SERVICE_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+# Controls how many bins are "almost full" (>= ~80%)
+# You can tweak these probabilities if you want even fewer near-full bins.
+P_LOW = 0.50    # 50% low-fill bins
+P_MED = 0.35    # 35% medium-fill bins
+P_HIGH = 0.15   # 15% high-fill bins (near your threshold)
+
+
+def _sample_points_in_polygon(poly, n_points, rng):
+    """Sample up to n_points random points inside a polygon using rejection sampling."""
+    minx, miny, maxx, maxy = poly.bounds
+    points = []
+    attempts = 0
+    max_attempts = n_points * 50  # just in case polygon is very thin
+
+    while len(points) < n_points and attempts < max_attempts:
+        x = rng.uniform(minx, maxx)
+        y = rng.uniform(miny, maxy)
+        p = Point(x, y)
+        if poly.contains(p):
+            points.append(p)
+        attempts += 1
+
+    return points
+
+
+def main():
+    # Load route polygons
+    routes = gpd.read_file("Trash_Routes.geojson")
+    print(f"Loaded {len(routes)} route polygons")
+
+    bins = []
+    rng = np.random.default_rng(42)
+
+    for idx, row in routes.iterrows():
+        route_id = row.get("FID", idx)
+        poly = row.geometry
+
+        if poly is None or poly.is_empty:
+            print(f"Route {route_id}: geometry missing/empty, skipping.")
+            continue
+
+        points = _sample_points_in_polygon(poly, BIN_COUNT_PER_ROUTE, rng)
+        if not points:
+            print(f"Route {route_id}: could not sample points inside polygon, skipping.")
+            continue
+
+        for p in points:
+            lon = float(p.x)
+            lat = float(p.y)
+
+            # Random capacity (same as before)
+            capacity_l = int(rng.choice([240, 1100], p=[0.7, 0.3]))
+            service_time_min = float(rng.uniform(2, 5))  # time to service this bin
+
+            # --- NEW: explicitly choose how "full" the bin is ---
+            # Choose category: low / medium / high
+            cat = rng.choice(["low", "med", "high"], p=[P_LOW, P_MED, P_HIGH])
+
+            if cat == "high":
+                # Mostly near or above your 80% threshold
+                predicted_fill_pct = float(rng.uniform(80, 100))
+            elif cat == "med":
+                # Medium fill, clearly below threshold but non-trivial
+                predicted_fill_pct = float(rng.uniform(40, 79))
+            else:
+                # Low fill
+                predicted_fill_pct = float(rng.uniform(5, 39))
+
+            # Convert percentage to actual liters
+            fill_l_today = float((predicted_fill_pct / 100.0) * capacity_l)
+
+            # Make up a plausible growth model that matches this fill
+            # Choose days since collection between 1 and 5
+            days_since_collection = int(rng.integers(1, 6))
+
+            # Base growth such that base_growth * days ≈ fill, plus some noise
+            noise_l = float(rng.normal(0, 10))
+            if days_since_collection > 0:
+                base_growth_l_per_day = max(
+                    10.0,
+                    (fill_l_today - noise_l) / days_since_collection
+                )
+            else:
+                base_growth_l_per_day = float(rng.uniform(30, 100))
+
+            bins.append(
+                {
+                    "bin_id": len(bins) + 1,
+                    "lat": lat,
+                    "lon": lon,
+                    "route_id": route_id,
+                    "capacity_l": capacity_l,
+                    "service_time_min": round(service_time_min, 2),
+                    "base_growth_l_per_day": round(base_growth_l_per_day, 2),
+                    "noise_l": round(noise_l, 2),
+                    "fill_l_today": round(fill_l_today, 2),
+                    "predicted_fill_pct": round(predicted_fill_pct, 2),
+                }
+            )
+
+    if not bins:
+        raise RuntimeError("No bins were generated. Check your Trash_Routes.geojson file.")
+
+    bins_df = pd.DataFrame(bins)
+
+    # Assign a random service day (Mon–Fri) to each bin
+    rng = np.random.default_rng(123)
+    bins_df["service_day"] = rng.choice(SERVICE_DAYS, size=len(bins_df))
+
+    # Reorder columns so tests and downstream code see a stable schema
+    bins_df = bins_df[
+        [
+            "bin_id",
+            "lat",
+            "lon",
+            "route_id",
+            "service_day",
+            "capacity_l",
+            "service_time_min",
+            "base_growth_l_per_day",
+            "noise_l",
+            "fill_l_today",
+            "predicted_fill_pct",
+        ]
+    ]
+
+    output_path = "binSimulation.csv"
+    bins_df.to_csv(output_path, index=False)
+    print(f"Generated {output_path} with {len(bins_df)} bins.")
+    print("Approximate distribution (target):")
+    print(f"  Low-fill  bins: ~{int(P_LOW * 100)}%")
+    print(f"  Med-fill  bins: ~{int(P_MED * 100)}%")
+    print(f"  High-fill bins: ~{int(P_HIGH * 100)}% (near/full bins)")
+
+
+if __name__ == "__main__":
+    main()

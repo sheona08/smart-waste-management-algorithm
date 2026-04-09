@@ -1,0 +1,21 @@
+{
+  "1": {
+    "bin_id": 1,
+    "fill_percent": 8,
+    "battery_percent": 100,
+    "status": "critical",
+    "errors": {
+      "fallback_used": true,
+      "high_rejection": false,
+      "low_confidence": true,
+      "sensor_timeout": false
+    },
+    "warnings": [
+      "All sensors rejected - using fallback",
+      "Only 1 sensor used - low confidence"
+    ],
+    "received_at": "2026-04-09T21:48:36.788336077Z",
+    "device_id": "s26-21-sensor-node1",
+    "application_id": "s26-21"
+  }
+}
