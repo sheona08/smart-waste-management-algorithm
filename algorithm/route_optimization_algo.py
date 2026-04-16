@@ -755,7 +755,7 @@ def cli():
         print("=" * 80)
         return
 
-    campus_trucks = max(1, num_trucks - len(remote_df))
+    campus_trucks = min(max(1, num_trucks - len(remote_df)), max(1, len(campus_df)))
     campus_result = None
 
     if not campus_df.empty:
@@ -766,6 +766,14 @@ def cli():
 
     remote_start_id = len(campus_result["routes"]) if campus_result else 0
     remote_routes = build_remote_routes(remote_df, remote_start_id)
+
+    # Renumber all routes consecutively — solver may leave gaps from empty trucks
+    all_routes = (campus_result["routes"] if campus_result else []) + remote_routes
+    for i, route in enumerate(all_routes):
+        route["vehicle_id"] = i
+    if campus_result:
+        campus_result["routes"] = all_routes[:len(campus_result["routes"])]
+    remote_routes = all_routes[len(campus_result["routes"]) if campus_result else 0:]
 
     print_routes(campus_result, remote_routes)
 
